@@ -61,6 +61,7 @@ class Hdm_Endpoints
 
     public function getUpdates() 
     {
+        
         if(!function_exists('get_plugin_updates')){
             require_once ABSPATH . 'wp-admin/includes/update.php';
         }
@@ -73,8 +74,20 @@ class Hdm_Endpoints
         wp_update_plugins();
         wp_update_themes();
 
-        $pluginUpdates = get_site_transient('update_plugins');
-        $themeUpdates  = get_site_transient('update_themes');
+        //Wordpress core update
+        $coreUpdates            = get_core_updates();
+        $coreUpdateAvailable    = false;
+        $newVersion             = null;
+        //Plugin and theme updates
+        $pluginUpdates          = get_site_transient('update_plugins');
+        $themeUpdates           = get_site_transient('update_themes');
+
+        if(!empty($coreUpdates) && isset($coreUpdates[0]->response)){
+            if($coreUpdates[0]->response === 'upgrade'){
+                $coreUpdateAvailable = true;
+                $newVersion = $coreUpdates[0]->current;
+            }
+        }
 
         //Get all plugins with update status
         $allPlugins = get_plugins();
@@ -102,8 +115,9 @@ class Hdm_Endpoints
 
         return [
             'core' => [
-                'current'  => get_bloginfo('version'),
-                'available' => !empty($GLOBALS['wp_version']),
+                'current'   => get_bloginfo('version'),
+                'new_version' => $newVersion,        // null si pas de mise à jour
+                'available' => $coreUpdateAvailable, // true seulement si upgrade dispo
             ],
             'plugins' => $plugins,
             'themes' => $themes,
@@ -123,15 +137,13 @@ class Hdm_Endpoints
     {
         $fatal = get_option('wp_hdm_last_fatal');
         $fatalError = null;
-    
+
         if($fatal){
-            //Check if the error is recent (< 10 min) AND that the site is not working
-            $age_minutes = (time() - $fatal['time']) / 60;
-        
-            if($age_minutes < 1){
+            $age_seconds = time() - $fatal['time'];
+    
+            if($age_seconds < 30){
                 $fatalError = $fatal;
             }else{
-                //Auto-clear after 10 minutes
                 delete_option('wp_hdm_last_fatal');
             }
         }
